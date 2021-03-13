@@ -7,26 +7,37 @@ using System.Net.Sockets;
 using System.Net;
 using System.Net.NetworkInformation;
 using static location.Program;
+using System.IO;
 
 namespace location.Protocols
 {
     public static class Http09
     {
         public static TcpClient tClient;
+        public static NetworkStream DataStream;
         public static Socket sSock;
+        public static IAsyncResult _result;
         public static bool bConnectToServer()
         {
             CSettings.Load();
             IPEndPoint RemoteEndPoint = null;
             if (Program.s_WhoisServerAddress.Contains("ac"))
                 RemoteEndPoint = new IPEndPoint(Dns.GetHostAddresses(Program.s_WhoisServerAddress)[0], Program.PORT);
-            if (Program.settings.IPAddress != string.Empty)
-                RemoteEndPoint = new IPEndPoint(IPAddress.Parse(Program.settings.IPAddress), Program.PORT);
-            TcpClient client = new TcpClient();
+            if (Program.s_WhoisServerAddress != string.Empty)
+                RemoteEndPoint = new IPEndPoint(IPAddress.Parse(Program.s_WhoisServerAddress), Program.PORT);
+            tClient = new TcpClient();
             try
             {
-                client.Connect(RemoteEndPoint);
-                sSock = client.Client;
+                _result = tClient.BeginConnect(RemoteEndPoint.Address, RemoteEndPoint.Port, null, null);
+                sSock = tClient.Client;
+                var success = _result.AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(1));
+                if(!success)
+                {
+                    //Environment.Exit(-1);
+                    return false;
+                }
+                DataStream = tClient.GetStream();
+                sSock = tClient.Client;
             }
             catch { return false; }
             return true;
@@ -37,18 +48,28 @@ namespace location.Protocols
                 return false;
             try
             {
-                byte[] req = Encoding.ASCII.GetBytes($"GET {name}<CR><LF>");
-                sSock.Send(req);
-                req = new byte[Program.szKilobyte];
-                sSock.Receive(req);
-                string rec = Encoding.ASCII.GetString(req);
+                StreamWriter sw = new StreamWriter(DataStream);
+                StreamReader sr = new StreamReader(DataStream);
+
+                sw.WriteLine($"GET /{name}");
+                sw.Flush();
+                //sSock.Send(req);
+               // req = new byte[Program.szKilobyte];
+                //sSock.Receive(req);
+                string rec = sr.ReadLine();
                 if (rec.Contains("Found"))
                 {
                     Console.WriteLine($"no entries for {name} found!");
                     return true;
                 }
-                string loc = rec.Split(' ')[1].Split('<')[0];
-                Console.WriteLine($"{name} is in {loc.Replace("\0", null)}");
+                string loc = "";
+                for (int i = 3; i < rec.Split('n').Length; i++)
+                    if(rec.Split('n')[i] != String.Empty) loc += rec.Split('n')[i] + 'n';
+                loc = loc.Replace("\0", null);
+                loc = loc.Replace("\n", null);
+                loc = loc.Replace("\r", null);
+                loc = loc.Remove(loc.Length - 2, 2);
+                Console.WriteLine($"{name} is in {loc}");
             }
             catch { return false; }
             return true;
@@ -59,13 +80,17 @@ namespace location.Protocols
                 return false;
             try
             {
-                byte[] req = Encoding.ASCII.GetBytes($"PUT {name} <CR><LF>" +
-                    $"\n<CR><LF>" +
-                    $"\n{location}<CR><LF>");
-                sSock.Send(req);
-                req = new byte[Program.szKilobyte];
-                sSock.Receive(req);
-                string rec = Encoding.ASCII.GetString(req);
+                string req = $"PUT {name}\r\n" +
+                    $"\r\n" +
+                    $"{location}";
+                StreamWriter sw = new StreamWriter(DataStream);
+                StreamReader sr = new StreamReader(DataStream);
+                sw.WriteLine($"PUT /{name}");
+                sw.WriteLine($"");
+                sw.WriteLine($"{location}");
+                sw.Flush();
+
+                string rec = sr.ReadLine();
                 if (rec.Contains("entries"))
                 {
                     Console.WriteLine($"no entries for {name} found!");

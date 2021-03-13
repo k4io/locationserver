@@ -7,53 +7,65 @@ using System.Net.Sockets;
 using System.Net;
 using System.Net.NetworkInformation;
 using static location.Program;
+using System.IO;
 
 namespace location.Protocols
 {
     public static class Http10
     {
         public static TcpClient tClient;
+        public static NetworkStream DataStream;
         public static Socket sSock;
+        public static IAsyncResult _result;
         public static bool bConnectToServer()
         {
             CSettings.Load();
             IPEndPoint RemoteEndPoint = null;
             if (Program.s_WhoisServerAddress.Contains("ac"))
                 RemoteEndPoint = new IPEndPoint(Dns.GetHostAddresses(Program.s_WhoisServerAddress)[0], Program.PORT);
-            if (Program.settings.IPAddress != string.Empty)
-                RemoteEndPoint = new IPEndPoint(IPAddress.Parse(Program.settings.IPAddress), Program.PORT);
-            TcpClient client = new TcpClient();
-            try
+            else
+                RemoteEndPoint = new IPEndPoint(IPAddress.Parse(Program.s_WhoisServerAddress), Program.PORT);
+
+            tClient = new TcpClient();
+            /*
+            _result = tClient.BeginConnect(RemoteEndPoint.Address, RemoteEndPoint.Port, null, null);
+            var success = _result.AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(3));
+            if (!success)
             {
-                client.Connect(RemoteEndPoint);
-                sSock = client.Client;
-            }
-            catch { return false; }
+                Environment.Exit(-1);
+                return false;
+            }*/
+            tClient.Connect(RemoteEndPoint);
+            DataStream = tClient.GetStream();
+            sSock = tClient.Client;
+        
             return true;
         }
         public static bool bLookupName(string name)
         {
             if (!sSock.Connected)
                 return false;
-            try
-            {
+            
                 /*GET<space>/?<name><space>HTTP/1.0<CR><LF>
                    <optional header lines><CR><LF>*/
-                byte[] req = Encoding.ASCII.GetBytes($"GET /? {name} HTTP/1.0<CR><LF>\n" +
-                    $"NULL<CR><LF>");
-                sSock.Send(req);
-                req = new byte[Program.szKilobyte];
-                sSock.Receive(req);
-                string rec = Encoding.ASCII.GetString(req);
+                StreamWriter sw = new StreamWriter(DataStream);
+                StreamReader sr = new StreamReader(DataStream);
+                //sSock.Send(req);
+                sw.WriteLine($"GET /?{name} HTTP/1.0");
+                sw.WriteLine($"");
+                sw.Flush();
+
+                string rec = sr.ReadLine();
+                string rec1 = sr.ReadLine();
+                string rec2 = sr.ReadLine();
+                string loc = sr.ReadLine();
                 if (rec.Contains("Found"))
                 {
                     Console.WriteLine($"no entries for {name} found!");
                     return true;
                 }
-                string loc = rec.Split('<')[rec.Split('<').Length - 3].Split('>')[1];
                 Console.WriteLine($"{name} is in {loc.Replace("\0", null)}");
-            }
-            catch { return false; }
+            
             return true;
         }
         public static bool bChangeLocation(string name, string location)
@@ -67,21 +79,22 @@ namespace location.Protocols
                     <optional header lines><CR><LF>
                     <location>*/
 
-                byte[] req = Encoding.ASCII.GetBytes($"POST /{name} HTTP/1.0<CR><LF>\n" +
+                string req = $"POST /{name} HTTP/1.0<CR><LF>\n" +
                     $"Content-Length: {location.Length}<CR><LF>\n" +
                     $"NULL<CR><LF>\n" +
-                    $"{location}");
-                sSock.Send(req);
-                req = new byte[Program.szKilobyte];
-                sSock.Receive(req);
-                string rec = Encoding.ASCII.GetString(req);
-                if (rec.Contains("entries"))
-                {
-                    Console.WriteLine($"no entries for {name} found!");
-                    return true;
-                }
-                else if (rec.Contains("OK"))
+                    $"{location}";
+                StreamWriter sw = new StreamWriter(DataStream);
+                StreamReader sr = new StreamReader(DataStream);
+                sw.WriteLine($"POST /{name} HTTP/1.0");
+                sw.WriteLine($"Content-Length: {location.Length - 1}");
+                sw.WriteLine($"");
+                sw.WriteLine($"{location}");
+                sw.Flush();
+
+                string rec = sr.ReadLine();
+                if (rec.Contains("OK"))
                     Console.WriteLine($"updated {name}'s location.");
+                else Console.WriteLine($"no entries for {name} found.");
             }
             catch { return false; }
             return true;

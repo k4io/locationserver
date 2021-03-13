@@ -42,7 +42,8 @@ namespace locationserver
                             sr.BaseStream.Flush();
                             Console.WriteLine($"[{clients.Count}] {s.Client.RemoteEndPoint} > {Encoding.ASCII.GetString(rec).Replace("\0", null)}.");
                             string msg = Encoding.ASCII.GetString(rec);
-
+                            s.ReceiveTimeout = 10000;
+                            s.SendTimeout = 1000;
 
                             if(msg.Contains("HTTP/1.1")) {
                                 if (msg.Contains("GET"))
@@ -150,22 +151,35 @@ namespace locationserver
 
                             if (msg.Contains(' '))
                             {
-                                StreamWriter swl = File.CreateText(msg.Split(' ')[0]);
+                                string fname = msg.Split(' ')[0];
+                                if (File.Exists(fname))
+                                    File.Delete(fname);
+                                StreamWriter swl = File.CreateText(fname);
                                 string txt = "";
                                 foreach (string s2 in msg.Split(' '))
-                                    if (s2 != msg.Split(' ')[0]) txt += s2 + " ";
+                                    if (s2 != fname) txt += s2.Split('\0')[0] + " ";
                                 swl.WriteLine(txt);
                                 swl.Close();
+                                Thread.Sleep(150);
                                 s.Client.Send(Encoding.ASCII.GetBytes("OK\r\n"));
+                                Console.WriteLine($"[{clients.ToArray().Length}] Sent OK.");
                                 //sw.WriteLine(Encoding.ASCII.GetBytes("OK\r\n"));
-                                //sw.Flush();
+                                sw.Flush();
                                 continue;
                             }
-                            
-                            if (!File.Exists(msg.Split(' ')[0]))
+                            if (!File.Exists(msg.Split('\r')[0]))
+                            {
                                 sw.WriteLine("ERROR: no entries found\r\n");
-                            else sw.WriteLine(File.ReadAllText(msg.Split(' ')[0]) + "\r\n");
-                            sw.Flush();
+                                sw.Flush();
+                            }
+                            else
+                            {
+                                string _s = File.ReadAllText(msg.Split('\r')[0]);
+                                _s = _s.Split('\r')[0] + '\r';
+                                Console.WriteLine("3");
+                                sw.WriteLine(_s);
+                                sw.Flush();
+                            }
                         }
                         catch(Exception ee)
                         {
