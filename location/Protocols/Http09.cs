@@ -21,25 +21,27 @@ namespace location.Protocols
         {
             CSettings.Load();
             IPEndPoint RemoteEndPoint = null;
-            if (Program.s_WhoisServerAddress.Contains("ac"))
-                RemoteEndPoint = new IPEndPoint(Dns.GetHostAddresses(Program.s_WhoisServerAddress)[0], Program.PORT);
-            if (Program.s_WhoisServerAddress != string.Empty)
-                RemoteEndPoint = new IPEndPoint(IPAddress.Parse(Program.s_WhoisServerAddress), Program.PORT);
             tClient = new TcpClient();
             try
             {
-                _result = tClient.BeginConnect(RemoteEndPoint.Address, RemoteEndPoint.Port, null, null);
-                sSock = tClient.Client;
+                _result = tClient.BeginConnect(Program.s_WhoisServerAddress, int.Parse(Program.settings.Port), null, null);
                 var success = _result.AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(1));
-                if(!success)
+                if (!success)
                 {
-                    //Environment.Exit(-1);
+                    Environment.Exit(-1);
                     return false;
                 }
                 DataStream = tClient.GetStream();
+                //DataStream.ReadTimeout = 1000;
+                //DataStream.WriteTimeout = 1000;
                 sSock = tClient.Client;
             }
-            catch { return false; }
+            catch(Exception e)
+            {
+                if (e.Message.Contains("period"))
+                    tClient.EndConnect(_result);
+                else throw e;
+            }
             return true;
         }
         public static bool bLookupName(string name)
@@ -56,7 +58,7 @@ namespace location.Protocols
                 //sSock.Send(req);
                // req = new byte[Program.szKilobyte];
                 //sSock.Receive(req);
-                string rec = sr.ReadLine();
+                string rec = sr.ReadToEnd();
                 if (rec.Contains("Found"))
                 {
                     Console.WriteLine($"no entries for {name} found!");
@@ -65,13 +67,20 @@ namespace location.Protocols
                 string loc = "";
                 for (int i = 3; i < rec.Split('n').Length; i++)
                     if(rec.Split('n')[i] != String.Empty) loc += rec.Split('n')[i] + 'n';
+                if (loc[loc.Length - 1] == 'n') loc = loc.Substring(0, loc.Length - 1);
+                if (loc[loc.Length - 1] == ' ') loc = loc.Substring(0, loc.Length - 1);
                 loc = loc.Replace("\0", null);
                 loc = loc.Replace("\n", null);
                 loc = loc.Replace("\r", null);
-                loc = loc.Remove(loc.Length - 2, 2);
-                Console.WriteLine($"{name} is in {loc}");
+
+                Console.WriteLine($"{name} is {loc}\r\n");
             }
-            catch { return false; }
+            catch (Exception e)
+            {
+                if (e.Message.Contains("period"))
+                    tClient.EndConnect(_result);
+                else throw e;
+            }
             return true;
         }
         public static bool bChangeLocation(string name, string location)
@@ -90,7 +99,7 @@ namespace location.Protocols
                 sw.WriteLine($"{location}");
                 sw.Flush();
 
-                string rec = sr.ReadLine();
+                string rec = sr.ReadToEnd();
                 if (rec.Contains("entries"))
                 {
                     Console.WriteLine($"no entries for {name} found!");
@@ -99,7 +108,12 @@ namespace location.Protocols
                 else if (rec.Contains("OK"))
                     Console.WriteLine($"HTTP/0.9 200 OK\r\nContent-Type: text/plain\r\n\r\n");
             }
-            catch { return false; }
+            catch (Exception e)
+            {
+                if (e.Message.Contains("period"))
+                    tClient.EndConnect(_result);
+                else throw e;
+            }
             return true;
         }
     }

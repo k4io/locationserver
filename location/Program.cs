@@ -40,8 +40,6 @@ namespace location
                     if (s == "-h")
                         s_WhoisServerAddress = args[args.ToList().IndexOf("-h") + 1];
                         //s_WhoisServerAddress = args[gIndex+1];
-                    if (s == "-p")
-                        pIndex = gIndex + 1;
                     foreach (string ss in largs)
                         args.ToList().Remove(ss);
                     if (IPAddress.TryParse(args[hIndex], out nIp))
@@ -55,13 +53,14 @@ namespace location
                         largs.Remove(largs.Where(T => T == "-h").FirstOrDefault());
                         if (largs[0].Contains('.'))
                             largs.RemoveAt(0);
-                        if (largs.Contains("-p") && int.TryParse(args[pIndex], out PORT))
-                        {
-                            settings.Port = args[pIndex];
-                            largs.Remove(largs.Where(T => T == "-p").FirstOrDefault());
-                            largs.Remove(s);
-                        }
+                        
                         break;
+                    }
+                    if (largs.Contains("-p") && int.TryParse(args[args.ToList().IndexOf("-p")+1], out PORT))
+                    {
+                        settings.Port = PORT.ToString();
+                        largs.Remove(largs.Where(T => T == "-p").FirstOrDefault());
+                        largs.Remove(s);
                     }
                     gIndex++;
                 }

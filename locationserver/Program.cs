@@ -42,7 +42,7 @@ namespace locationserver
                             sr.BaseStream.Flush();
                             Console.WriteLine($"[{clients.Count}] {s.Client.RemoteEndPoint} > {Encoding.ASCII.GetString(rec).Replace("\0", null)}.");
                             string msg = Encoding.ASCII.GetString(rec);
-                            s.ReceiveTimeout = 10000;
+                            s.ReceiveTimeout = 1000;
                             s.SendTimeout = 1000;
 
                             if(msg.Contains("HTTP/1.1")) {
@@ -53,13 +53,14 @@ namespace locationserver
                                     {
                                         s.Client.Send(Encoding.ASCII.GetBytes("HTTP/1.1 404 Not Found\r\n" +
                                             "Content-Type: text/plain\r\n" +
-                                            "NULL\r\n"));
+                                            "\r\n"));
                                     }
                                     else
                                     {
                                         s.Client.Send(Encoding.ASCII.GetBytes($"HTTP/1.1 200 OK\r\n" +
                                             $"Content-Type: text/plain\r\n" +
-                                            $"NULL\r\n{File.ReadAllText(name)}\r\n"));
+                                            $"\r\n" +
+                                            $"{File.ReadAllText(name)}\r\n"));
                                     }
                                     continue;
                                 }
@@ -74,13 +75,13 @@ namespace locationserver
                                     File.WriteAllText(name, location);
                                     s.Client.Send(Encoding.ASCII.GetBytes("HTTP/1.1 200 OK\r\n" +
                                         "Content-Type: text/plain\r\n" +
-                                        "NULL\r\n"));
+                                        "\r\n"));
                                     continue;
                                 }
                             } else if(msg.Contains("HTTP/1.0")) {
                                 if(msg.Contains("GET"))
                                 {
-                                    string name = msg.Split('?')[1].Split('H')[0].Replace(" ", null);
+                                    string name = msg.Split('?')[1].Split(' ')[0];
                                     if(!File.Exists(name))
                                     {
                                         s.Client.Send(Encoding.ASCII.GetBytes($"HTTP/1.0 404 Not Found\r\n\n" +
@@ -105,7 +106,6 @@ namespace locationserver
                                 }
                             }
 
-                            //I know my code is ugly, here i dont care it is not how i would usually do it so i am not picky
                             if (!msg.Contains("\r\n"))
                                 msg += "\r\n";
                             if (msg.Contains("PUT"))
@@ -129,22 +129,16 @@ namespace locationserver
                                 Console.WriteLine("SENT REPLY");
                                 continue;
                             }
-                            else if (msg.Split(' ').Contains("GET")) {
-                                if (!File.Exists(msg.Split(' ')[1].Split('<')[0]))
+                            else if (msg.Contains("GET")) {
+                                string name = msg.Split(' ')[1].Split('<')[0].Replace("\r", null).Replace("\n", null).Replace("/", null).Replace("\0", null);
+                                if (!File.Exists(name))
                                      s.Client.Send(Encoding.ASCII.GetBytes("HTTP/0.9 404 Not Found\r\n" +
                                         "\nContent-Type: text/plain\r\n" +
                                         "\n\r\n"));
-                                /*sw.WriteLine(Encoding.ASCII.GetBytes("HTTP/0.9 404 Not Found\r\n" +
-                                    "\nContent-Type: text/plain\r\n" +
-                                    "\n\r\n")); */
-                                else s.Client.Send(Encoding.ASCII.GetBytes("HTTP/0.9 200 OK<CR>H<LF>" +
-                                     "\nContent-Type: text/plain\r\n" +
-                                     "\n\r\n" +
-                                     $"\n {File.ReadAllText(msg.Split(' ')[1].Split('<')[0])}\r\n"));
-                                /*sw.WriteLine(Encoding.ASCII.GetBytes("HTTP/0.9 200 OK<CR>H<LF>" +
-                                        "\nContent-Type: text/plain\r\n" +
-                                        "\n\r\n" +
-                                        $"\n{File.ReadAllText(msg.Split(' ')[1].Split('<')[0])}\r\n"));*/
+                                else s.Client.Send(Encoding.ASCII.GetBytes("HTTP/0.9 200 OK\r\n" +
+                                     "Content-Type: text/plain\r\n" +
+                                     "\r\n" +
+                                     $"{File.ReadAllText(name)}"));
                                 sw.Flush();
                                 continue;
                             }

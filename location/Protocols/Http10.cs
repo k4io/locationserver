@@ -21,31 +21,30 @@ namespace location.Protocols
         {
             CSettings.Load();
             IPEndPoint RemoteEndPoint = null;
-            if (Program.s_WhoisServerAddress.Contains("ac"))
-                RemoteEndPoint = new IPEndPoint(Dns.GetHostAddresses(Program.s_WhoisServerAddress)[0], Program.PORT);
-            else
-                RemoteEndPoint = new IPEndPoint(IPAddress.Parse(Program.s_WhoisServerAddress), Program.PORT);
-
             tClient = new TcpClient();
-            /*
-            _result = tClient.BeginConnect(RemoteEndPoint.Address, RemoteEndPoint.Port, null, null);
-            var success = _result.AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(3));
-            if (!success)
+            try
             {
-                Environment.Exit(-1);
-                return false;
-            }*/
-            tClient.Connect(RemoteEndPoint);
-            DataStream = tClient.GetStream();
-            sSock = tClient.Client;
-        
-            return true;
+                _result = tClient.BeginConnect(Program.s_WhoisServerAddress, int.Parse(Program.settings.Port), null, null);
+                var success = _result.AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(1));
+                if (!success)
+                {
+                    Environment.Exit(-1);
+                    return false;
+                }
+                DataStream = tClient.GetStream();
+                sSock = tClient.Client;
+                DataStream.ReadTimeout = 1000;
+                DataStream.WriteTimeout = 1000;
+
+                return true;
+            } catch (Exception e) { throw e; }
         }
         public static bool bLookupName(string name)
         {
             if (!sSock.Connected)
                 return false;
-            
+            try
+            {
                 /*GET<space>/?<name><space>HTTP/1.0<CR><LF>
                    <optional header lines><CR><LF>*/
                 StreamWriter sw = new StreamWriter(DataStream);
@@ -64,8 +63,14 @@ namespace location.Protocols
                     Console.WriteLine($"no entries for {name} found!");
                     return true;
                 }
-                Console.WriteLine($"{name} is in {loc.Replace("\0", null)}");
-            
+                Console.WriteLine($"{name} is {loc.Replace("\0", null)}");
+            }
+            catch (Exception e)
+            {
+                if (e.Message.Contains("period"))
+                    tClient.EndConnect(_result);
+                else throw e;
+            }
             return true;
         }
         public static bool bChangeLocation(string name, string location)
@@ -96,7 +101,12 @@ namespace location.Protocols
                     Console.WriteLine($"updated {name}'s location.");
                 else Console.WriteLine($"no entries for {name} found.");
             }
-            catch { return false; }
+            catch(Exception e)
+            {
+                if (e.Message.Contains("period"))
+                    tClient.EndConnect(_result);
+                else throw e;
+            }
             return true;
         }
     }

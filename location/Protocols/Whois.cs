@@ -21,14 +21,9 @@ namespace location.Protocols
         public static bool bConnectToServer()
         {
             CSettings.Load();
-            IPEndPoint RemoteEndPoint;
-            if (Program.settings.IPAddress != string.Empty)
-            {
-                if (!Program.settings.IPAddress.Contains("ac"))
-                    RemoteEndPoint = new IPEndPoint(IPAddress.Parse(Program.settings.IPAddress), int.Parse(Program.settings.Port));
-            } else
-                if (!Program.s_WhoisServerAddress.Contains("ac"))
-                    RemoteEndPoint = new IPEndPoint(IPAddress.Parse(Program.s_WhoisServerAddress), int.Parse(Program.settings.Port));
+
+            //IPEndPoint RemoteEndPoint = new IPEndPoint(IPAddress.Parse(Program.s_WhoisServerAddress), int.Parse(Program.settings.Port));
+
             tClient = new TcpClient();
             try
             {
@@ -37,45 +32,48 @@ namespace location.Protocols
                 var success = _result.AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(3));
                 if (!success)
                 {
-                    Environment.Exit(-1);
+                    //Environment.Exit(-1);
                     return false;
                 }
 
                 DataStream = tClient.GetStream();
+                DataStream.ReadTimeout = 1000;
+                DataStream.WriteTimeout = 1000;
                 sSock = tClient.Client;
-            } catch { throw; }
+            } catch(Exception e) { throw e; }
             return true;
         }
         public static bool bLookupName(string name)
         {
             if (!tClient.Connected)
                 return false;
-            //try
-            //{
-            StreamWriter sw = new StreamWriter(DataStream);
-            StreamReader sr = new StreamReader(DataStream);
-            string _s = "" + name + "";
-            sw.WriteLine(_s);
-            sw.Flush();
-            byte[] buf = new byte[Program.szKilobyte];
-            string rec = sr.ReadLine();
-            if (rec.Contains("entries"))
+            try
             {
-                Console.WriteLine($"ERROR: no entries found\r\n");
-                return true;
+                StreamWriter sw = new StreamWriter(DataStream);
+                StreamReader sr = new StreamReader(DataStream);
+                string _s = $"{name}";
+                sw.WriteLine(_s);
+                sw.Flush();
+                byte[] buf = new byte[Program.szKilobyte];
+                string rec = sr.ReadLine();
+                if (rec.Contains("entries"))
+                {
+                    Console.WriteLine($"ERROR: no entries found\r\n");
+                    return true;
+                }
+
+                string location = rec.Split('\0')[0];
+
+                Console.WriteLine($"{name} is {location}");
             }
-            //Console.WriteLine(rec);
-            string location = rec.Split('\0')[0];
-            //if (location.Split('\0')[0].Contains(' '))
-            //    location = location.Split('\0')[0].Split(' ')[0];
-            Console.WriteLine($"{name} is {location}");
-            //} catch(Exception e) 
-            //{ 
-            //    throw e; 
-            //    return false; 
-            //}
-            Environment.Exit(-1);
-            tClient.EndConnect(_result);
+            catch (Exception e)
+            {
+                if (e.Message.Contains("period"))
+                {
+                    Console.WriteLine("Server timed out!");
+                    tClient.EndConnect(_result);
+                }
+            }
             return true;
         }
         public static bool bChangeLocation(string name, string location)
@@ -105,7 +103,14 @@ namespace location.Protocols
                 //Environment.Exit(-1);
                 tClient.EndConnect(_result);
             }
-            catch { return false; }
+            catch(Exception e) {
+                if (e.Message.Contains("period"))
+                {
+                    Console.WriteLine("Server timed out!");
+                    tClient.EndConnect(_result);
+                }
+                else throw e;
+            }
             return true;
         }
     }
